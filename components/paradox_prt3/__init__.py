@@ -12,8 +12,8 @@ CONF_UART_ID = "uart_id"
 CONF_LAST_MESSAGE = "last_message"
 CONF_ALARM_STATE = "alarm_state"
 CONF_LAST_ERROR = "last_error"
-CONF_ZONE_1 = "zone_1"
-CONF_ZONE_2 = "zone_2"
+
+CONF_ZONES = "zones"
 
 CONF_READY = "ready"
 CONF_TROUBLE = "trouble"
@@ -29,8 +29,10 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_ALARM_STATE): cv.use_id(text_sensor.TextSensor),
 
         cv.Optional(CONF_LAST_ERROR): cv.use_id(text_sensor.TextSensor),
-        cv.Optional(CONF_ZONE_1): cv.use_id(binary_sensor.BinarySensor),
-        cv.Optional(CONF_ZONE_2): cv.use_id(binary_sensor.BinarySensor),
+
+        cv.Optional(CONF_ZONES, default=[]): cv.ensure_list(
+            cv.use_id(binary_sensor.BinarySensor)
+        ),
 
         cv.Optional(CONF_READY): cv.use_id(binary_sensor.BinarySensor),
         cv.Optional(CONF_TROUBLE): cv.use_id(binary_sensor.BinarySensor),
@@ -48,6 +50,7 @@ async def to_code(config):
 
     last = await cg.get_variable(config[CONF_LAST_MESSAGE])
     state = await cg.get_variable(config[CONF_ALARM_STATE])
+
     cg.add(var.set_last_message(last))
     cg.add(var.set_alarm_state(state))
 
@@ -55,13 +58,9 @@ async def to_code(config):
         err = await cg.get_variable(config[CONF_LAST_ERROR])
         cg.add(var.set_last_error(err))
 
-    if CONF_ZONE_1 in config:
-        z1 = await cg.get_variable(config[CONF_ZONE_1])
-        cg.add(var.set_zone_1(z1))
-
-    if CONF_ZONE_2 in config:
-        z2 = await cg.get_variable(config[CONF_ZONE_2])
-        cg.add(var.set_zone_2(z2))
+    for zone_id in config[CONF_ZONES]:
+        zone = await cg.get_variable(zone_id)
+        cg.add(var.add_zone(zone))
 
     if CONF_READY in config:
         x = await cg.get_variable(config[CONF_READY])
