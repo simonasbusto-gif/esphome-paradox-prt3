@@ -1,0 +1,53 @@
+template:
+  - alarm_control_panel:
+      - name: Paradox Alarm
+        unique_id: paradox_alarm_panel
+        code_arm_required: true
+        code_format: number
+
+        state: >
+          {% set s = states('sensor.esp32_paradox_alarm_state') %}
+          {% if s == 'disarm' %}
+            disarmed
+          {% elif s in ['arm', 'force'] %}
+            armed_away
+          {% elif s == 'stay' %}
+            armed_home
+          {% elif s == 'instant' %}
+            armed_night
+          {% elif s == 'triggered' %}
+            triggered
+          {% elif s == 'arming' %}
+            arming
+          {% elif s == 'disarming' %}
+            disarming
+          {% else %}
+            pending
+          {% endif %}
+
+        arm_away:
+          - action: esphome.esp32_paradox_arm
+            data:
+              area: 1
+              mode: "A"
+              code: "{{ code }}"
+
+        arm_home:
+          - action: esphome.esp32_paradox_arm
+            data:
+              area: 1
+              mode: "S"
+              code: "{{ code }}"
+
+        arm_night:
+          - action: esphome.esp32_paradox_arm
+            data:
+              area: 1
+              mode: "I"
+              code: "{{ code }}"
+
+        disarm:
+          - action: esphome.esp32_paradox_disarm
+            data:
+              area: 1
+              code: "{{ code }}"
