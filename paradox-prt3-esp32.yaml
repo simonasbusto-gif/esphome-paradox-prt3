@@ -1,0 +1,99 @@
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: ${board}
+  framework:
+    type: arduino
+
+logger:
+  baud_rate: 0
+
+api:
+  services:
+    - service: arm
+      variables:
+        area: int
+        mode: string
+        code: string
+      then:
+        - lambda: |-
+            id(paradox).arm_area(area, mode, code);
+
+    - service: disarm
+      variables:
+        area: int
+        code: string
+      then:
+        - lambda: |-
+            id(paradox).disarm_area(area, code);
+
+external_components:
+  - source:
+      type: git
+      url: ${repo_url}
+      ref: ${repo_ref}
+    components: [paradox_prt3]
+
+uart:
+  id: uart_bus
+  tx_pin: ${uart_tx_pin}
+  rx_pin: ${uart_rx_pin}
+  baud_rate: 9600
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+
+text_sensor:
+  - platform: template
+    id: paradox_last_message
+    name: "Paradox Last Message"
+
+  - platform: template
+    id: paradox_alarm_state
+    name: "Paradox Alarm State"
+
+  - platform: template
+    id: paradox_last_error
+    name: "Paradox Last Error"
+
+binary_sensor:
+  - platform: template
+    id: paradox_zone_1
+    name: "Paradox Zone 1 Motion"
+    device_class: motion
+
+  - platform: template
+    id: paradox_zone_2
+    name: "Paradox Zone 2 Motion"
+    device_class: motion
+
+  - platform: template
+    id: paradox_ready
+    name: "Paradox Area Ready"
+
+  - platform: template
+    id: paradox_trouble
+    name: "Paradox Trouble"
+
+  - platform: template
+    id: paradox_memory
+    name: "Paradox Alarm Memory"
+
+  - platform: template
+    id: paradox_strobe
+    name: "Paradox Strobe"
+
+paradox_prt3:
+  id: paradox
+  uart_id: uart_bus
+  last_message: paradox_last_message
+  alarm_state: paradox_alarm_state
+  last_error: paradox_last_error
+  zone_1: paradox_zone_1
+  zone_2: paradox_zone_2
+  ready: paradox_ready
+  trouble: paradox_trouble
+  memory: paradox_memory
+  strobe: paradox_strobe
