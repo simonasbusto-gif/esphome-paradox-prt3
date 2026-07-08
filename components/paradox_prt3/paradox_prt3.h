@@ -3,6 +3,7 @@
 #include <string>
 #include <cstdio>
 #include <cctype>
+#include <vector>
 
 #include "esphome/core/component.h"
 #include "esphome/components/uart/uart.h"
@@ -19,8 +20,8 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   void set_last_message(text_sensor::TextSensor *s) { last_message_ = s; }
   void set_alarm_state(text_sensor::TextSensor *s) { alarm_state_ = s; }
   void set_last_error(text_sensor::TextSensor *s) { last_error_ = s; }
-  void set_zone_1(binary_sensor::BinarySensor *s) { zone_1_ = s; }
-  void set_zone_2(binary_sensor::BinarySensor *s) { zone_2_ = s; }
+
+  void add_zone(binary_sensor::BinarySensor *s) { zones_.push_back(s); }
 
   void set_ready(binary_sensor::BinarySensor *s) { ready_ = s; }
   void set_trouble(binary_sensor::BinarySensor *s) { trouble_ = s; }
@@ -73,8 +74,7 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
     ESP_LOGCONFIG("paradox_prt3", "  last_message set: %s", last_message_ ? "yes" : "no");
     ESP_LOGCONFIG("paradox_prt3", "  alarm_state set: %s", alarm_state_ ? "yes" : "no");
     ESP_LOGCONFIG("paradox_prt3", "  last_error set: %s", last_error_ ? "yes" : "no");
-    ESP_LOGCONFIG("paradox_prt3", "  zone_1 set: %s", zone_1_ ? "yes" : "no");
-    ESP_LOGCONFIG("paradox_prt3", "  zone_2 set: %s", zone_2_ ? "yes" : "no");
+    ESP_LOGCONFIG("paradox_prt3", "  zones configured: %u", static_cast<unsigned>(zones_.size()));
     ESP_LOGCONFIG("paradox_prt3", "  ready set: %s", ready_ ? "yes" : "no");
     ESP_LOGCONFIG("paradox_prt3", "  trouble set: %s", trouble_ ? "yes" : "no");
     ESP_LOGCONFIG("paradox_prt3", "  memory set: %s", memory_ ? "yes" : "no");
@@ -86,8 +86,9 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
     if (last_message_ != nullptr) last_message_->publish_state("");
     if (last_error_ != nullptr) last_error_->publish_state("");
 
-    if (zone_1_ != nullptr) zone_1_->publish_state(false);
-    if (zone_2_ != nullptr) zone_2_->publish_state(false);
+    for (auto *zone : zones_) {
+      if (zone != nullptr) zone->publish_state(false);
+    }
 
     if (ready_ != nullptr) ready_->publish_state(true);
     if (trouble_ != nullptr) trouble_->publish_state(false);
@@ -156,8 +157,7 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   text_sensor::TextSensor *alarm_state_{nullptr};
   text_sensor::TextSensor *last_error_{nullptr};
 
-  binary_sensor::BinarySensor *zone_1_{nullptr};
-  binary_sensor::BinarySensor *zone_2_{nullptr};
+  std::vector<binary_sensor::BinarySensor *> zones_;
 
   binary_sensor::BinarySensor *ready_{nullptr};
   binary_sensor::BinarySensor *trouble_{nullptr};
@@ -271,6 +271,57 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
     return (millis() - pending_since_ms_) <= TRANSITION_GUARD_MS;
   }
 
+  int parse_zone_number_(const char *line) {
+    // Expected:
+    // G001N001A001 = zone 1 open
+    // G000N001A001 = zone 1 closed
+    //
+    // Zone number starts after N, index 5, length 3.
+    if (std::strlen(line) < 12) return -1;
+    if (line[0] != 'G') return -1;
+    if (line[4] != 'N') return -1;
+
+    if (!std::isdigit(static_cast<unsigned char>(line[5])) ||
+        !std::isdigit(static_cast<unsigned char>(line[6])) ||
+        !std::isdigit(static_cast<unsigned char>(line[7]))) {
+      return -1;
+    }
+
+    int zone = (line[5] - '0') * 100 + (line[6] - '0') * 10 + (line[7] - '0');
+    return zone;
+  }
+
+  bool is_zone_open_event_(const char *line) {
+    return strncmp(line, "G001N", 5) == 0;
+  }
+
+  bool is_zone_closed_event_(const char *line) {
+    return strncmp(line, "G000N", 5) == 0;
+  }
+
+  void update_zone_from_event_(const char *line) {
+    bool is_open = is_zone_open_event_(line);
+    bool is_closed = is_zone_closed_event_(line);
+
+    if (!is_open && !is_closed) return;
+
+    int zone_number = parse_zone_number_(line);
+    if (zone_number < 1) return;
+
+    int index = zone_number - 1;
+
+    if (index < 0 || index >= static_cast<int>(zones_.size())) {
+      ESP_LOGW("paradox_prt3", "Received zone %d event, but only %u zones configured",
+               zone_number, static_cast<unsigned>(zones_.size()));
+      return;
+    }
+
+    auto *zone = zones_[index];
+    if (zone == nullptr) return;
+
+    zone->publish_state(is_open);
+  }
+
   void handle_line_(const char *line) {
     // ---- Command ACK ----
     if (strncmp(line, "AA001&ok", 8) == 0) {
@@ -304,23 +355,8 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
       return;
     }
 
-    // ---- Zone 1 ----
-    if (zone_1_ != nullptr) {
-      if (strcmp(line, "G001N001A001") == 0) {
-        zone_1_->publish_state(true);
-      } else if (strcmp(line, "G000N001A001") == 0) {
-        zone_1_->publish_state(false);
-      }
-    }
-
-    // ---- Zone 2 ----
-    if (zone_2_ != nullptr) {
-      if (strcmp(line, "G001N002A001") == 0) {
-        zone_2_->publish_state(true);
-      } else if (strcmp(line, "G000N002A001") == 0) {
-        zone_2_->publish_state(false);
-      }
-    }
+    // ---- Universal zone open/closed events ----
+    update_zone_from_event_(line);
 
     // ---- Area 1 status: RA001 + status bytes ----
     if (strncmp(line, "RA001", 5) == 0) {
