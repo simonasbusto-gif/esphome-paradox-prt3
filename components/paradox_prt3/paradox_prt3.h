@@ -122,7 +122,7 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
       }
     }
 
-    if (millis() - last_poll_ > 30000) {
+    if (millis() - last_poll_ > 10000) {
       last_poll_ = millis();
       request_area_status(1);
     }
