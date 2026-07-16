@@ -122,7 +122,13 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
       }
     }
 
-    if (millis() - last_poll_ > 10000) {
+    uint32_t poll_interval = NORMAL_STATUS_POLL_MS;
+
+    if (pending_cmd_ != PendingCmd::NONE) {
+      poll_interval = FAST_STATUS_POLL_MS;
+    }
+
+    if (millis() - last_poll_ > poll_interval) {
       last_poll_ = millis();
       request_area_status(1);
     }
@@ -175,6 +181,8 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   uint32_t pending_since_ms_{0};
 
   static constexpr uint32_t TRANSITION_GUARD_MS = 20000;
+  static constexpr uint32_t NORMAL_STATUS_POLL_MS = 10000;
+  static constexpr uint32_t FAST_STATUS_POLL_MS = 1000;
 
   int readline_(int readch, char *buffer, int len) {
     static int pos = 0;
@@ -272,11 +280,6 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   }
 
   int parse_zone_number_(const char *line) {
-    // Expected:
-    // G001N001A001 = zone 1 open
-    // G000N001A001 = zone 1 closed
-    //
-    // Zone number starts after N, index 5, length 3.
     if (std::strlen(line) < 12) return -1;
     if (line[0] != 'G') return -1;
     if (line[4] != 'N') return -1;
@@ -323,7 +326,6 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   }
 
   void handle_line_(const char *line) {
-    // ---- Command ACK ----
     if (strncmp(line, "AA001&ok", 8) == 0) {
       pending_cmd_ = PendingCmd::ARM;
       pending_since_ms_ = millis();
@@ -338,7 +340,6 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
       return;
     }
 
-    // ---- Command fail ----
     if (strstr(line, "&fail") != nullptr) {
       if (last_error_ != nullptr) {
         if (strncmp(line, "AA", 2) == 0) {
@@ -355,34 +356,30 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
       return;
     }
 
-    // ---- Universal zone open/closed events ----
     update_zone_from_event_(line);
 
-    // ---- Area 1 status: RA001 + status bytes ----
     if (strncmp(line, "RA001", 5) == 0) {
       got_area_status_ = true;
 
       if (std::strlen(line) < 12) return;
 
-      const char mode = line[5];   // Byte 6: D/A/F/S/I
-      const char mem  = line[6];   // Byte 7: M/O
-      const char trb  = line[7];   // Byte 8: T/O
-      const char nrd  = line[8];   // Byte 9: N/O
-      const char inal = line[10];  // Byte 11: A/O
-      const char strb = line[11];  // Byte 12: S/O
+      const char mode = line[5];
+      const char mem  = line[6];
+      const char trb  = line[7];
+      const char nrd  = line[8];
+      const char inal = line[10];
+      const char strb = line[11];
 
       if (memory_ != nullptr) memory_->publish_state(mem == 'M');
       if (trouble_ != nullptr) trouble_->publish_state(trb == 'T');
       if (ready_ != nullptr) ready_->publish_state(nrd != 'N');
       if (strobe_ != nullptr) strobe_->publish_state(strb == 'S');
 
-      // In alarm always wins
       if (inal == 'A') {
         set_state_("triggered");
         return;
       }
 
-      // Keep "arming" from being overwritten by early/stale disarmed RA replies
       if (in_transition_guard_() && alarm_state_ != nullptr) {
         const std::string cur = alarm_state_->state;
 
