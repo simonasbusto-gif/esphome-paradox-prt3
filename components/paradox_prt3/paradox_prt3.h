@@ -42,6 +42,7 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
     send_str_(cmd);
 
     request_area_status(a);
+    last_poll_ = millis();
   }
 
   void disarm_area(int area, const std::string &code) {
@@ -57,6 +58,7 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
     send_str_(cmd);
 
     request_area_status(a);
+    last_poll_ = millis();
   }
 
   void request_area_status(int area) {
@@ -71,6 +73,7 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
 
   void dump_config() override {
     ESP_LOGCONFIG("paradox_prt3", "ParadoxPRT3:");
+    ESP_LOGCONFIG("paradox_prt3", "  version: 40-zones-fast-boot-status-v0.3.0");
     ESP_LOGCONFIG("paradox_prt3", "  last_message set: %s", last_message_ ? "yes" : "no");
     ESP_LOGCONFIG("paradox_prt3", "  alarm_state set: %s", alarm_state_ ? "yes" : "no");
     ESP_LOGCONFIG("paradox_prt3", "  last_error set: %s", last_error_ ? "yes" : "no");
@@ -82,7 +85,10 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   }
 
   void setup() override {
-    if (alarm_state_ != nullptr) alarm_state_->publish_state("pending");
+    // IMPORTANT:
+    // Do NOT publish "pending" here.
+    // If we force pending on every ESP reboot/upload, HA can get stuck showing pending
+    // until the next valid RA001 status arrives.
     if (last_message_ != nullptr) last_message_->publish_state("");
     if (last_error_ != nullptr) last_error_->publish_state("");
 
@@ -96,8 +102,8 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
     if (strobe_ != nullptr) strobe_->publish_state(false);
 
     boot_ms_ = millis();
-    boot_step_ = 0;
     got_area_status_ = false;
+    no_status_error_sent_ = false;
 
     pending_cmd_ = PendingCmd::NONE;
     pending_since_ms_ = 0;
@@ -107,30 +113,31 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   }
 
   void loop() override {
-    if (!got_area_status_) {
-      uint32_t t = millis() - boot_ms_;
-
-      if (boot_step_ == 0 && t >= 2000) {
-        request_area_status(1);
-        boot_step_ = 1;
-      } else if (boot_step_ == 1 && t >= 6000) {
-        request_area_status(1);
-        boot_step_ = 2;
-      } else if (boot_step_ == 2 && t >= 12000) {
-        request_area_status(1);
-        boot_step_ = 3;
-      }
-    }
-
     uint32_t poll_interval = NORMAL_STATUS_POLL_MS;
 
-    if (pending_cmd_ != PendingCmd::NONE) {
+    // Before first valid RA001, poll fast so the real state appears quickly after ESP reboot.
+    if (!got_area_status_) {
+      poll_interval = BOOT_STATUS_POLL_MS;
+    } else if (pending_cmd_ != PendingCmd::NONE) {
+      // While arming/disarming, poll fast so HA status feels responsive.
       poll_interval = FAST_STATUS_POLL_MS;
     }
 
     if (millis() - last_poll_ > poll_interval) {
       last_poll_ = millis();
       request_area_status(1);
+    }
+
+    // If PRT3 does not answer status requests after boot, expose this as an error,
+    // but do not force alarm_state to pending.
+    if (!got_area_status_ && !no_status_error_sent_ && millis() - boot_ms_ > NO_STATUS_ERROR_MS) {
+      no_status_error_sent_ = true;
+
+      if (last_error_ != nullptr) {
+        last_error_->publish_state("no_status_response");
+      }
+
+      ESP_LOGW("paradox_prt3", "No RA001 status response received after ESP boot");
     }
 
     const int max_line_length = 160;
@@ -171,8 +178,8 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   binary_sensor::BinarySensor *strobe_{nullptr};
 
   uint32_t boot_ms_{0};
-  int boot_step_{0};
   bool got_area_status_{false};
+  bool no_status_error_sent_{false};
   uint32_t last_poll_{0};
 
   enum class PendingCmd { NONE, ARM, DISARM };
@@ -181,8 +188,10 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   uint32_t pending_since_ms_{0};
 
   static constexpr uint32_t TRANSITION_GUARD_MS = 20000;
-  static constexpr uint32_t NORMAL_STATUS_POLL_MS = 10000;
+  static constexpr uint32_t BOOT_STATUS_POLL_MS = 1000;
   static constexpr uint32_t FAST_STATUS_POLL_MS = 1000;
+  static constexpr uint32_t NORMAL_STATUS_POLL_MS = 10000;
+  static constexpr uint32_t NO_STATUS_ERROR_MS = 60000;
 
   int readline_(int readch, char *buffer, int len) {
     static int pos = 0;
@@ -280,6 +289,9 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   }
 
   int parse_zone_number_(const char *line) {
+    // Expected:
+    // G001N001A001 = zone 1 open
+    // G000N001A001 = zone 1 closed
     if (std::strlen(line) < 12) return -1;
     if (line[0] != 'G') return -1;
     if (line[4] != 'N') return -1;
@@ -326,6 +338,7 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   }
 
   void handle_line_(const char *line) {
+    // ---- Command ACK ----
     if (strncmp(line, "AA001&ok", 8) == 0) {
       pending_cmd_ = PendingCmd::ARM;
       pending_since_ms_ = millis();
@@ -340,6 +353,7 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
       return;
     }
 
+    // ---- Command fail ----
     if (strstr(line, "&fail") != nullptr) {
       if (last_error_ != nullptr) {
         if (strncmp(line, "AA", 2) == 0) {
@@ -356,30 +370,39 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
       return;
     }
 
+    // ---- Universal zone open/closed events ----
     update_zone_from_event_(line);
 
+    // ---- Area 1 status: RA001 + status bytes ----
     if (strncmp(line, "RA001", 5) == 0) {
       got_area_status_ = true;
+      no_status_error_sent_ = false;
+
+      if (last_error_ != nullptr && last_error_->state == "no_status_response") {
+        last_error_->publish_state("");
+      }
 
       if (std::strlen(line) < 12) return;
 
-      const char mode = line[5];
-      const char mem  = line[6];
-      const char trb  = line[7];
-      const char nrd  = line[8];
-      const char inal = line[10];
-      const char strb = line[11];
+      const char mode = line[5];   // Byte 6: D/A/F/S/I
+      const char mem  = line[6];   // Byte 7: M/O
+      const char trb  = line[7];   // Byte 8: T/O
+      const char nrd  = line[8];   // Byte 9: N/O
+      const char inal = line[10];  // Byte 11: A/O
+      const char strb = line[11];  // Byte 12: S/O
 
       if (memory_ != nullptr) memory_->publish_state(mem == 'M');
       if (trouble_ != nullptr) trouble_->publish_state(trb == 'T');
       if (ready_ != nullptr) ready_->publish_state(nrd != 'N');
       if (strobe_ != nullptr) strobe_->publish_state(strb == 'S');
 
+      // In alarm always wins
       if (inal == 'A') {
         set_state_("triggered");
         return;
       }
 
+      // Keep "arming" from being overwritten by early/stale disarmed RA replies
       if (in_transition_guard_() && alarm_state_ != nullptr) {
         const std::string cur = alarm_state_->state;
 
