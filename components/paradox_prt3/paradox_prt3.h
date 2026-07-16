@@ -73,7 +73,7 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
 
   void dump_config() override {
     ESP_LOGCONFIG("paradox_prt3", "ParadoxPRT3:");
-    ESP_LOGCONFIG("paradox_prt3", "  version: 40-zones-fast-boot-status-v0.3.0");
+    ESP_LOGCONFIG("paradox_prt3", "  version: 40-zones-1s-poll-long-arming-v0.4.0");
     ESP_LOGCONFIG("paradox_prt3", "  last_message set: %s", last_message_ ? "yes" : "no");
     ESP_LOGCONFIG("paradox_prt3", "  alarm_state set: %s", alarm_state_ ? "yes" : "no");
     ESP_LOGCONFIG("paradox_prt3", "  last_error set: %s", last_error_ ? "yes" : "no");
@@ -85,10 +85,8 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   }
 
   void setup() override {
-    // IMPORTANT:
-    // Do NOT publish "pending" here.
-    // If we force pending on every ESP reboot/upload, HA can get stuck showing pending
-    // until the next valid RA001 status arrives.
+    // Do NOT force "pending" on ESP boot.
+    // Wait for a real RA001 status instead.
     if (last_message_ != nullptr) last_message_->publish_state("");
     if (last_error_ != nullptr) last_error_->publish_state("");
 
@@ -113,17 +111,9 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   }
 
   void loop() override {
-    uint32_t poll_interval = NORMAL_STATUS_POLL_MS;
-
-    // Before first valid RA001, poll fast so the real state appears quickly after ESP reboot.
-    if (!got_area_status_) {
-      poll_interval = BOOT_STATUS_POLL_MS;
-    } else if (pending_cmd_ != PendingCmd::NONE) {
-      // While arming/disarming, poll fast so HA status feels responsive.
-      poll_interval = FAST_STATUS_POLL_MS;
-    }
-
-    if (millis() - last_poll_ > poll_interval) {
+    // Poll every 1 second all the time.
+    // This makes arm/disarm/triggered status update much faster in HA.
+    if (millis() - last_poll_ > STATUS_POLL_MS) {
       last_poll_ = millis();
       request_area_status(1);
     }
@@ -187,10 +177,13 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
   PendingCmd pending_cmd_{PendingCmd::NONE};
   uint32_t pending_since_ms_{0};
 
-  static constexpr uint32_t TRANSITION_GUARD_MS = 20000;
-  static constexpr uint32_t BOOT_STATUS_POLL_MS = 1000;
-  static constexpr uint32_t FAST_STATUS_POLL_MS = 1000;
-  static constexpr uint32_t NORMAL_STATUS_POLL_MS = 10000;
+  // 1 second polling all the time
+  static constexpr uint32_t STATUS_POLL_MS = 1000;
+
+  // Keep HA in "arming" while Paradox is in exit delay.
+  // Your panel reports RA001D... during exit delay, so this must be longer than exit delay.
+  static constexpr uint32_t TRANSITION_GUARD_MS = 120000;
+
   static constexpr uint32_t NO_STATUS_ERROR_MS = 60000;
 
   int readline_(int readch, char *buffer, int len) {
@@ -354,19 +347,24 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
     }
 
     // ---- Command fail ----
+    // Only real command failures start with AA or AD.
+    // Ignore broken fragments like "0&fail" so they don't create false command_failed.
     if (strstr(line, "&fail") != nullptr) {
-      if (last_error_ != nullptr) {
-        if (strncmp(line, "AA", 2) == 0) {
-          last_error_->publish_state("arm_failed");
-        } else if (strncmp(line, "AD", 2) == 0) {
-          last_error_->publish_state("disarm_failed");
-        } else {
-          last_error_->publish_state("command_failed");
-        }
+      if (strncmp(line, "AA", 2) == 0) {
+        if (last_error_ != nullptr) last_error_->publish_state("arm_failed");
+        pending_cmd_ = PendingCmd::NONE;
+        pending_since_ms_ = 0;
+        return;
       }
 
-      pending_cmd_ = PendingCmd::NONE;
-      pending_since_ms_ = 0;
+      if (strncmp(line, "AD", 2) == 0) {
+        if (last_error_ != nullptr) last_error_->publish_state("disarm_failed");
+        pending_cmd_ = PendingCmd::NONE;
+        pending_since_ms_ = 0;
+        return;
+      }
+
+      ESP_LOGW("paradox_prt3", "Ignoring non-command fail fragment: %s", line);
       return;
     }
 
@@ -402,7 +400,8 @@ class ParadoxPRT3 : public Component, public uart::UARTDevice {
         return;
       }
 
-      // Keep "arming" from being overwritten by early/stale disarmed RA replies
+      // Keep "arming" from being overwritten by RA001D... during Paradox exit delay.
+      // Paradox can still report D while BabyWare shows exit delay.
       if (in_transition_guard_() && alarm_state_ != nullptr) {
         const std::string cur = alarm_state_->state;
 
