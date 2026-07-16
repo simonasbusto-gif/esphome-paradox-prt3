@@ -35,6 +35,7 @@ external_components:
       url: ${repo_url}
       ref: ${repo_ref}
     components: [paradox_prt3]
+    refresh: 0s
 
 uart:
   id: uart_bus
