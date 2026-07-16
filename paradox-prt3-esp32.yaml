@@ -49,232 +49,232 @@ uart:
 text_sensor:
   - platform: template
     id: paradox_last_message
-    name: "Paradox Last Message"
+    name: "Last Message"
 
   - platform: template
     id: paradox_alarm_state
-    name: "Paradox Alarm State"
+    name: "Alarm State"
 
   - platform: template
     id: paradox_last_error
-    name: "Paradox Last Error"
+    name: "Last Error"
 
 binary_sensor:
   - platform: template
     id: paradox_zone_1
-    name: "Paradox Zone 1"
+    name: "Zone 1"
     device_class: opening
 
   - platform: template
     id: paradox_zone_2
-    name: "Paradox Zone 2"
+    name: "Zone 2"
     device_class: opening
 
   - platform: template
     id: paradox_zone_3
-    name: "Paradox Zone 3"
+    name: "Zone 3"
     device_class: opening
 
   - platform: template
     id: paradox_zone_4
-    name: "Paradox Zone 4"
+    name: "Zone 4"
     device_class: opening
 
   - platform: template
     id: paradox_zone_5
-    name: "Paradox Zone 5"
+    name: "Zone 5"
     device_class: opening
 
   - platform: template
     id: paradox_zone_6
-    name: "Paradox Zone 6"
+    name: "Zone 6"
     device_class: opening
 
   - platform: template
     id: paradox_zone_7
-    name: "Paradox Zone 7"
+    name: "Zone 7"
     device_class: opening
 
   - platform: template
     id: paradox_zone_8
-    name: "Paradox Zone 8"
+    name: "Zone 8"
     device_class: opening
 
   - platform: template
     id: paradox_zone_9
-    name: "Paradox Zone 9"
+    name: "Zone 9"
     device_class: opening
 
   - platform: template
     id: paradox_zone_10
-    name: "Paradox Zone 10"
+    name: "Zone 10"
     device_class: opening
 
   - platform: template
     id: paradox_zone_11
-    name: "Paradox Zone 11"
+    name: "Zone 11"
     device_class: opening
 
   - platform: template
     id: paradox_zone_12
-    name: "Paradox Zone 12"
+    name: "Zone 12"
     device_class: opening
 
   - platform: template
     id: paradox_zone_13
-    name: "Paradox Zone 13"
+    name: "Zone 13"
     device_class: opening
 
   - platform: template
     id: paradox_zone_14
-    name: "Paradox Zone 14"
+    name: "Zone 14"
     device_class: opening
 
   - platform: template
     id: paradox_zone_15
-    name: "Paradox Zone 15"
+    name: "Zone 15"
     device_class: opening
 
   - platform: template
     id: paradox_zone_16
-    name: "Paradox Zone 16"
+    name: "Zone 16"
     device_class: opening
 
   - platform: template
     id: paradox_zone_17
-    name: "Paradox Zone 17"
+    name: "Zone 17"
     device_class: opening
 
   - platform: template
     id: paradox_zone_18
-    name: "Paradox Zone 18"
+    name: "Zone 18"
     device_class: opening
 
   - platform: template
     id: paradox_zone_19
-    name: "Paradox Zone 19"
+    name: "Zone 19"
     device_class: opening
 
   - platform: template
     id: paradox_zone_20
-    name: "Paradox Zone 20"
+    name: "Zone 20"
     device_class: opening
 
   - platform: template
     id: paradox_zone_21
-    name: "Paradox Zone 21"
+    name: "Zone 21"
     device_class: opening
 
   - platform: template
     id: paradox_zone_22
-    name: "Paradox Zone 22"
+    name: "Zone 22"
     device_class: opening
 
   - platform: template
     id: paradox_zone_23
-    name: "Paradox Zone 23"
+    name: "Zone 23"
     device_class: opening
 
   - platform: template
     id: paradox_zone_24
-    name: "Paradox Zone 24"
+    name: "Zone 24"
     device_class: opening
 
   - platform: template
     id: paradox_zone_25
-    name: "Paradox Zone 25"
+    name: "Zone 25"
     device_class: opening
 
   - platform: template
     id: paradox_zone_26
-    name: "Paradox Zone 26"
+    name: "Zone 26"
     device_class: opening
 
   - platform: template
     id: paradox_zone_27
-    name: "Paradox Zone 27"
+    name: "Zone 27"
     device_class: opening
 
   - platform: template
     id: paradox_zone_28
-    name: "Paradox Zone 28"
+    name: "Zone 28"
     device_class: opening
 
   - platform: template
     id: paradox_zone_29
-    name: "Paradox Zone 29"
+    name: "Zone 29"
     device_class: opening
 
   - platform: template
     id: paradox_zone_30
-    name: "Paradox Zone 30"
+    name: "Zone 30"
     device_class: opening
 
   - platform: template
     id: paradox_zone_31
-    name: "Paradox Zone 31"
+    name: "Zone 31"
     device_class: opening
 
   - platform: template
     id: paradox_zone_32
-    name: "Paradox Zone 32"
+    name: "Zone 32"
     device_class: opening
 
   - platform: template
     id: paradox_zone_33
-    name: "Paradox Zone 33"
+    name: "Zone 33"
     device_class: opening
 
   - platform: template
     id: paradox_zone_34
-    name: "Paradox Zone 34"
+    name: "Zone 34"
     device_class: opening
 
   - platform: template
     id: paradox_zone_35
-    name: "Paradox Zone 35"
+    name: "Zone 35"
     device_class: opening
 
   - platform: template
     id: paradox_zone_36
-    name: "Paradox Zone 36"
+    name: "Zone 36"
     device_class: opening
 
   - platform: template
     id: paradox_zone_37
-    name: "Paradox Zone 37"
+    name: "Zone 37"
     device_class: opening
 
   - platform: template
     id: paradox_zone_38
-    name: "Paradox Zone 38"
+    name: "Zone 38"
     device_class: opening
 
   - platform: template
     id: paradox_zone_39
-    name: "Paradox Zone 39"
+    name: "Zone 39"
     device_class: opening
 
   - platform: template
     id: paradox_zone_40
-    name: "Paradox Zone 40"
+    name: "Zone 40"
     device_class: opening
 
   - platform: template
     id: paradox_ready
-    name: "Paradox Area Ready"
+    name: "Area Ready"
 
   - platform: template
     id: paradox_trouble
-    name: "Paradox Trouble"
+    name: "Trouble"
 
   - platform: template
     id: paradox_memory
-    name: "Paradox Alarm Memory"
+    name: "Alarm Memory"
 
   - platform: template
     id: paradox_strobe
-    name: "Paradox Strobe"
+    name: "Strobe"
 
 paradox_prt3:
   id: paradox
